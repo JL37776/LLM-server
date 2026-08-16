@@ -16,15 +16,33 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
 import java.io.RandomAccessFile
+import java.net.InetAddress
+import java.net.Socket
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import javax.net.SocketFactory
 
 class DownloadWorker(appContext: Context, params: WorkerParameters) :
     CoroutineWorker(appContext, params),
     KoinComponent {
 
     private val modelDao: ModelDao by inject()
+
+    private val largeBufferSocketFactory = object : SocketFactory() {
+        private val default = getDefault()
+        private fun Socket.configure() = apply {
+            receiveBufferSize = 2 * 1024 * 1024
+            sendBufferSize = 256 * 1024
+        }
+        override fun createSocket() = default.createSocket().configure()
+        override fun createSocket(host: String, port: Int) = default.createSocket(host, port).configure()
+        override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int) = default.createSocket(host, port, localHost, localPort).configure()
+        override fun createSocket(host: InetAddress, port: Int) = default.createSocket(host, port).configure()
+        override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int) = default.createSocket(address, port, localAddress, localPort).configure()
+    }
+
     private val client = OkHttpClient.Builder()
+        .socketFactory(largeBufferSocketFactory)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .followRedirects(true)
@@ -83,20 +101,27 @@ class DownloadWorker(appContext: Context, params: WorkerParameters) :
         val chunkSize = totalSize / chunkCount
         val totalDownloaded = AtomicLong(0L)
 
-        Log.i(TAG, "Starting parallel download: $chunkCount connections, totalSize=$totalSize")
-        modelDao.updateProgress(modelId, 0, DownloadState.DOWNLOADING)
-
-        RandomAccessFile(destFile, "rw").use { raf ->
-            raf.setLength(totalSize)
-        }
-
-        val chunkFiles = (0 until chunkCount).map { i ->
+        val chunkSpecs = (0 until chunkCount).map { i ->
             val start = i * chunkSize
             val end = if (i == chunkCount - 1) totalSize - 1 else (start + chunkSize - 1)
             ChunkSpec(i, start, end)
         }
 
-        val jobs = chunkFiles.map { chunk ->
+        val resumedBytes = chunkSpecs.sumOf { chunk ->
+            val partFile = File(destFile.parentFile, "${destFile.name}.part${chunk.index}")
+            if (partFile.exists()) partFile.length().coerceAtMost(chunk.end - chunk.start + 1) else 0L
+        }
+        totalDownloaded.set(resumedBytes)
+
+        val initialPercent = computeProgressPercent(resumedBytes, totalSize)
+        Log.i(TAG, "Starting parallel download: $chunkCount connections, totalSize=$totalSize, resumedBytes=$resumedBytes, initialPercent=$initialPercent")
+        modelDao.updateProgress(modelId, initialPercent, DownloadState.DOWNLOADING)
+
+        RandomAccessFile(destFile, "rw").use { raf ->
+            raf.setLength(totalSize)
+        }
+
+        val jobs = chunkSpecs.map { chunk ->
             async(Dispatchers.IO) {
                 downloadChunk(modelId, url, destFile, chunk, totalSize, totalDownloaded)
             }
@@ -104,7 +129,8 @@ class DownloadWorker(appContext: Context, params: WorkerParameters) :
 
         jobs.forEach { it.await() }
 
-        assembleChunks(destFile, chunkFiles)
+        Log.i(TAG, "All chunks done, assembling file...")
+        assembleChunks(destFile, chunkSpecs)
     }
 
     private fun assembleChunks(destFile: File, chunks: List<ChunkSpec>) {
@@ -134,15 +160,14 @@ class DownloadWorker(appContext: Context, params: WorkerParameters) :
         totalDownloaded: AtomicLong,
     ) {
         val partFile = File(destFile.parent, "${destFile.name}.part${chunk.index}")
-        val alreadyDownloaded = if (partFile.exists()) partFile.length() else 0L
+        val chunkTotal = chunk.end - chunk.start + 1
+        val alreadyDownloaded = if (partFile.exists()) partFile.length().coerceAtMost(chunkTotal) else 0L
         val resumeStart = chunk.start + alreadyDownloaded
 
-        if (alreadyDownloaded >= (chunk.end - chunk.start + 1)) {
-            totalDownloaded.addAndGet(alreadyDownloaded)
+        if (alreadyDownloaded >= chunkTotal) {
+            Log.d(TAG, "Chunk ${chunk.index}: already complete ($alreadyDownloaded bytes)")
             return
         }
-
-        totalDownloaded.addAndGet(alreadyDownloaded)
 
         val request = Request.Builder()
             .url(url)
@@ -154,7 +179,8 @@ class DownloadWorker(appContext: Context, params: WorkerParameters) :
             if (!response.isSuccessful && response.code != 206) {
                 throw java.io.IOException("Chunk ${chunk.index} failed: HTTP ${response.code}")
             }
-            Log.d(TAG, "Chunk ${chunk.index}: HTTP ${response.code}, Content-Length=${response.header("Content-Length")}")
+            val finalUrl = response.request.url
+            Log.d(TAG, "Chunk ${chunk.index}: HTTP ${response.code}, proto=${response.protocol}, Content-Length=${response.header("Content-Length")}, url=$finalUrl")
 
             val body = response.body ?: throw java.io.IOException("Empty body for chunk ${chunk.index}")
 
@@ -177,6 +203,7 @@ class DownloadWorker(appContext: Context, params: WorkerParameters) :
                         val percent = computeProgressPercent(downloaded, totalSize)
                         if (percent != lastReportedPercent) {
                             lastReportedPercent = percent
+                            Log.d(TAG, "Progress: $percent% (downloaded=${downloaded / 1024 / 1024}MB / total=${totalSize / 1024 / 1024}MB)")
                             modelDao.updateProgress(modelId, percent, DownloadState.DOWNLOADING)
                             setProgress(androidx.work.workDataOf(KEY_PROGRESS_PERCENT to percent))
                         }

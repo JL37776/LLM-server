@@ -47,6 +47,38 @@ class AndroidModelRepository(
         modelDao.delete(modelId)
     }
 
+    override suspend fun importLocal(filePath: String) {
+        val file = File(filePath)
+        if (!file.exists()) return
+        val fileName = file.name
+        val id = "local/${fileName.substringBeforeLast('.')}"
+        val quantLabel = QUANT_LABEL_REGEX.find(fileName)?.value?.uppercase() ?: "GGUF"
+        val paramCount = PARAM_COUNT_REGEX.find(fileName)?.value?.uppercase() ?: "-"
+
+        val quant = QuantInfo(
+            label = quantLabel,
+            fileName = fileName,
+            downloadUrl = "",
+            sizeBytes = file.length(),
+        )
+        val model = ModelInfo(
+            id = id,
+            name = fileName.substringBeforeLast('.'),
+            org = "Local import",
+            format = ModelFormat.GGUF,
+            parameterCount = paramCount,
+            contextLength = null,
+            quantizations = listOf(quant),
+            selectedQuant = quant,
+            updatedAt = null,
+            localPath = filePath,
+            checksum = null,
+            downloadState = DownloadState.DOWNLOADED,
+            downloadProgressPercent = 100,
+        )
+        modelDao.upsert(model.toEntity())
+    }
+
     override suspend fun deleteLocal(modelId: String) {
         downloadManager.cancel(modelId)
         val entity = modelDao.get(modelId)

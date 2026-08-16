@@ -9,6 +9,8 @@ import com.nzshores.llmserver.core.model.EngineStatus
 import com.nzshores.llmserver.core.model.LoadResult
 import com.nzshores.llmserver.core.model.ModelInfo
 import com.nzshores.llmserver.core.repository.ModelRepository
+import com.nzshores.llmserver.data.local.LocalGgufFile
+import com.nzshores.llmserver.data.local.LocalModelScanner
 import com.nzshores.llmserver.data.settings.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +26,9 @@ data class LibraryUiState(
     val devicePreference: DevicePreference = DevicePreference.GPU_FIRST,
     val lastLoadResult: LoadResult? = null,
     val isLoading: Boolean = false,
+    val isScanning: Boolean = false,
+    val scanResults: List<LocalGgufFile> = emptyList(),
+    val showScanDialog: Boolean = false,
 )
 
 class LibraryViewModel(
@@ -34,6 +39,8 @@ class LibraryViewModel(
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
+
+    private val scanner = LocalModelScanner()
 
     init {
         viewModelScope.launch { _uiState.update { it.copy(devicePreference = settingsRepository.loadDevicePreference()) } }
@@ -48,7 +55,14 @@ class LibraryViewModel(
                 )
             }.collect { merged ->
                 _uiState.update { current ->
-                    merged.copy(isLoading = current.isLoading, lastLoadResult = current.lastLoadResult, devicePreference = current.devicePreference)
+                    merged.copy(
+                        isLoading = current.isLoading,
+                        lastLoadResult = current.lastLoadResult,
+                        devicePreference = current.devicePreference,
+                        isScanning = current.isScanning,
+                        scanResults = current.scanResults,
+                        showScanDialog = current.showScanDialog,
+                    )
                 }
             }
         }
@@ -73,5 +87,34 @@ class LibraryViewModel(
 
     fun onDelete(modelId: String) {
         viewModelScope.launch { repository.deleteLocal(modelId) }
+    }
+
+    fun onScanDevice() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isScanning = true, showScanDialog = true) }
+            val results = scanner.scan()
+            val knownPaths = (_uiState.value.notLoaded + listOfNotNull(_uiState.value.loaded))
+                .mapNotNull { it.localPath }
+                .toSet()
+            val filtered = results.filter { it.path !in knownPaths }
+            _uiState.update { it.copy(isScanning = false, scanResults = filtered) }
+        }
+    }
+
+    fun onDismissScanDialog() {
+        _uiState.update { it.copy(showScanDialog = false, scanResults = emptyList()) }
+    }
+
+    fun onImportFile(filePath: String) {
+        viewModelScope.launch {
+            repository.importLocal(filePath)
+            _uiState.update { state ->
+                state.copy(scanResults = state.scanResults.filter { it.path != filePath })
+            }
+        }
+    }
+
+    fun onImportFromUri(filePath: String) {
+        viewModelScope.launch { repository.importLocal(filePath) }
     }
 }

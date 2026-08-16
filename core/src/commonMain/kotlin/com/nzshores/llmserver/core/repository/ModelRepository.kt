@@ -24,4 +24,7 @@ interface ModelRepository {
     suspend fun cancelDownload(modelId: String)
 
     suspend fun deleteLocal(modelId: String)
+
+    /** Import a local GGUF file by path, registering it as a downloaded model without copying. */
+    suspend fun importLocal(filePath: String)
 }
