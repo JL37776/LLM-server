@@ -11,9 +11,11 @@ import io.ktor.client.request.parameter
  */
 class HuggingFaceApi(private val client: HttpClient) {
 
+    private val baseUrl = "https://huggingface.co"
+
     suspend fun search(query: String, ggufOnly: Boolean, limit: Int = 20): List<HfModelSummaryDto> {
         if (query.isBlank()) return emptyList()
-        return client.get("https://huggingface.co/api/models") {
+        return client.get("$baseUrl/api/models") {
             parameter("search", query)
             parameter("limit", limit)
             if (ggufOnly) parameter("filter", "gguf")
@@ -21,11 +23,11 @@ class HuggingFaceApi(private val client: HttpClient) {
     }
 
     suspend fun modelDetail(repoId: String): HfModelDetailDto {
-        return client.get("https://huggingface.co/api/models/$repoId") {
+        return client.get("$baseUrl/api/models/$repoId") {
             parameter("blobs", "true")
         }.body()
     }
 
     fun downloadUrl(repoId: String, fileName: String): String =
-        "https://huggingface.co/$repoId/resolve/main/$fileName"
+        "$baseUrl/$repoId/resolve/main/$fileName"
 }

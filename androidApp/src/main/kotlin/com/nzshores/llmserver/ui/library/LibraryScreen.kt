@@ -13,12 +13,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -75,6 +77,7 @@ fun LibraryScreen(viewModel: LibraryViewModel = koinViewModel()) {
                     fellBackToCpu = state.lastLoadResult?.fellBackToCpu == true,
                     isLoading = state.isLoading,
                     onLoad = { viewModel.onLoad(model) },
+                    onDelete = { viewModel.onDelete(model.id) },
                 )
             }
         }
@@ -131,7 +134,7 @@ private fun LoadedCard(
 }
 
 @Composable
-private fun IdleCard(model: ModelInfo, fellBackToCpu: Boolean, isLoading: Boolean, onLoad: () -> Unit) {
+private fun IdleCard(model: ModelInfo, fellBackToCpu: Boolean, isLoading: Boolean, onLoad: () -> Unit, onDelete: () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = SurfaceColor),
         border = BorderStroke(1.dp, Border),
@@ -161,7 +164,10 @@ private fun IdleCard(model: ModelInfo, fellBackToCpu: Boolean, isLoading: Boolea
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(formatSize(model.selectedQuant?.sizeBytes), style = MaterialTheme.typography.bodySmall, color = TextDim)
-                Button(onClick = onLoad, enabled = !isLoading, shape = RoundedCornerShape(10.dp)) { Text("Load") }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, contentDescription = "Delete download", tint = Bad) }
+                    Button(onClick = onLoad, enabled = !isLoading, shape = RoundedCornerShape(10.dp)) { Text("Load") }
+                }
             }
         }
     }

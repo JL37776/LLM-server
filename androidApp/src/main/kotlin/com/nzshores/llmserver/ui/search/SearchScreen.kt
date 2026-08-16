@@ -14,12 +14,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -79,7 +82,13 @@ fun SearchScreen(viewModel: SearchViewModel = koinViewModel()) {
                 contentPadding = PaddingValues(bottom = 16.dp),
             ) {
                 items(state.results, key = { it.id }) { model ->
-                    ModelCard(model = model, onDownload = { viewModel.onDownload(model) })
+                    ModelCard(
+                        model = model,
+                        onDownload = { viewModel.onDownload(model) },
+                        onPause = { viewModel.onPauseDownload(model.id) },
+                        onResume = { viewModel.onResumeDownload(model) },
+                        onDelete = { viewModel.onDeleteDownload(model.id) },
+                    )
                 }
             }
         }
@@ -104,7 +113,13 @@ private fun FilterChipView(label: String, active: Boolean, onClick: () -> Unit) 
 }
 
 @Composable
-private fun ModelCard(model: ModelInfo, onDownload: () -> Unit) {
+private fun ModelCard(
+    model: ModelInfo,
+    onDownload: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onDelete: () -> Unit,
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = com.nzshores.llmserver.ui.theme.Surface),
         border = androidx.compose.foundation.BorderStroke(1.dp, Border),
@@ -124,19 +139,30 @@ private fun ModelCard(model: ModelInfo, onDownload: () -> Unit) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             ) {
                 Text(formatSize(model.selectedQuant?.sizeBytes), style = MaterialTheme.typography.bodySmall, color = TextDim)
                 when (model.downloadState) {
-                    DownloadState.DOWNLOADING -> Text("Downloading ${model.downloadProgressPercent}%", style = MaterialTheme.typography.bodySmall)
-                    DownloadState.DOWNLOADED -> Text("Downloaded", color = com.nzshores.llmserver.ui.theme.Good, style = MaterialTheme.typography.bodySmall)
+                    DownloadState.DOWNLOADING -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("${model.downloadProgressPercent}%", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 4.dp))
+                        IconButton(onClick = onPause) { Icon(Icons.Outlined.Pause, contentDescription = "Pause download", tint = TextDim) }
+                    }
+                    DownloadState.PAUSED -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("${model.downloadProgressPercent}% · paused", style = MaterialTheme.typography.bodySmall, color = TextDim, modifier = Modifier.padding(end = 4.dp))
+                        Button(onClick = onResume, shape = RoundedCornerShape(10.dp)) { Text("Resume") }
+                    }
+                    DownloadState.DOWNLOADED -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Downloaded", color = com.nzshores.llmserver.ui.theme.Good, style = MaterialTheme.typography.bodySmall)
+                        IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, contentDescription = "Delete download", tint = com.nzshores.llmserver.ui.theme.Bad) }
+                    }
                     else -> Button(onClick = onDownload, shape = RoundedCornerShape(10.dp)) { Text("Download") }
                 }
             }
-            if (model.downloadState == DownloadState.DOWNLOADING) {
+            if (model.downloadState == DownloadState.DOWNLOADING || model.downloadState == DownloadState.PAUSED) {
                 LinearProgressIndicator(
                     progress = { model.downloadProgressPercent / 100f },
                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(5.dp),
-                    color = Accent,
+                    color = if (model.downloadState == DownloadState.PAUSED) TextDim else Accent,
                     trackColor = Surface2,
                 )
             }

@@ -56,6 +56,23 @@ class SearchViewModel(private val repository: ModelRepository) : ViewModel() {
         viewModelScope.launch { repository.download(model) }
     }
 
+    /** Resuming is just re-enqueueing - DownloadWorker resumes from the partial file's length via a Range header. */
+    fun onResumeDownload(model: ModelInfo) {
+        viewModelScope.launch { repository.download(model) }
+    }
+
+    fun onPauseDownload(modelId: String) {
+        viewModelScope.launch { repository.pauseDownload(modelId) }
+    }
+
+    fun onCancelDownload(modelId: String) {
+        viewModelScope.launch { repository.cancelDownload(modelId) }
+    }
+
+    fun onDeleteDownload(modelId: String) {
+        viewModelScope.launch { repository.deleteLocal(modelId) }
+    }
+
     private fun runSearch(query: String) {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
