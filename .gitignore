@@ -9,4 +9,3 @@
 .cxx
 *.apk
 *.aab
-/gradle/wrapper/gradle-wrapper.jar

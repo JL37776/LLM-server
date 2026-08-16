@@ -138,7 +138,14 @@ Java_com_nzshores_llmserver_engine_llama_jni_LlamaNative_nativeGenerate(
 
     llama_sampler_chain_params sampler_params = llama_sampler_chain_default_params();
     llama_sampler *sampler = llama_sampler_chain_init(sampler_params);
-    llama_sampler_chain_add(sampler, llama_sampler_init_penalties(64, repeatPenalty, 0.0f, 0.0f));
+    llama_sampler_chain_add(
+        sampler,
+        llama_sampler_init_penalties(
+            llama_vocab_n_tokens(engine->vocab), /*n_vocab*/
+            64,                                  /*penalty_last_n*/
+            repeatPenalty,                       /*penalty_repeat*/
+            0.0f,                                /*penalty_freq*/
+            0.0f));                              /*penalty_present*/
     llama_sampler_chain_add(sampler, llama_sampler_init_top_k(topK));
     llama_sampler_chain_add(sampler, llama_sampler_init_top_p(topP, 1));
     llama_sampler_chain_add(sampler, llama_sampler_init_temp(temperature));
