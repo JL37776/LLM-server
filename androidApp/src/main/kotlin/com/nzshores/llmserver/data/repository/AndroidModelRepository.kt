@@ -51,7 +51,8 @@ class AndroidModelRepository(
         downloadManager.cancel(modelId)
         val entity = modelDao.get(modelId)
         entity?.localPath?.let { path -> File(path).delete() }
-        File(context.filesDir, "models/$modelId").deleteRecursively()
+        val modelDir = File(context.filesDir, "models/$modelId")
+        modelDir.deleteRecursively()
         modelDao.delete(modelId)
     }
 
