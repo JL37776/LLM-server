@@ -26,6 +26,14 @@ android {
         externalNativeBuild {
             cmake {
                 arguments += listOf("-DANDROID_STL=c++_shared")
+                // Off by default (see CMakeLists.txt) - needs the Vulkan SDK on the host to build.
+                // ./gradlew assembleDebug -PGGML_VULKAN=ON [-PVulkanSdkPath=/path/to/VulkanSDK]
+                if (project.hasProperty("GGML_VULKAN")) {
+                    arguments += "-DGGML_VULKAN=${project.property("GGML_VULKAN")}"
+                }
+                if (project.hasProperty("VulkanSdkPath")) {
+                    arguments += "-DCMAKE_PREFIX_PATH=${project.property("VulkanSdkPath")}"
+                }
             }
         }
     }
