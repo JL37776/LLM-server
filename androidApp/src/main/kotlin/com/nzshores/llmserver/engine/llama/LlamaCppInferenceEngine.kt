@@ -82,6 +82,21 @@ class LlamaCppInferenceEngine : InferenceEngine {
     }
 
     private fun tryLoad(path: String, useGpu: Boolean): LoadResult {
+        // n_gpu_layers > 0 is silently ignored by ggml when no GPU backend is compiled in (e.g.
+        // GGML_VULKAN=OFF) - the model would load "successfully" but actually run on CPU. Fail this
+        // attempt honestly instead of reporting GPU when nothing was actually offloaded, so
+        // GPU_FIRST correctly falls back to CPU with a real reason instead of a false claim.
+        if (useGpu && !LlamaNative.nativeSupportsGpuOffload()) {
+            return LoadResult(
+                success = false,
+                backend = ActiveBackend.NONE,
+                fellBackToCpu = false,
+                failureReason = LoadFailureReason.DRIVER_UNSUPPORTED,
+                message = "This build has no GPU backend compiled in (Vulkan SDK not installed at build time).",
+                vramUsedBytes = null,
+            )
+        }
+
         val newHandle = LlamaNative.nativeLoadModel(path, useGpu, if (useGpu) ALL_GPU_LAYERS else 0)
         if (newHandle == 0L) {
             val error = LlamaNative.nativeGetLastError()

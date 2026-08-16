@@ -4,6 +4,10 @@
 
 extern "C" {
 
+JNIEXPORT jboolean JNICALL
+Java_com_nzshores_llmserver_engine_llama_jni_LlamaNative_nativeSupportsGpuOffload(
+    JNIEnv *env, jobject thiz);
+
 JNIEXPORT jlong JNICALL
 Java_com_nzshores_llmserver_engine_llama_jni_LlamaNative_nativeLoadModel(
     JNIEnv *env, jobject thiz, jstring modelPath, jboolean useGpu, jint nGpuLayers);

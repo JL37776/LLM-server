@@ -54,6 +54,12 @@ std::string jstring_to_std(JNIEnv *env, jstring value) {
 
 extern "C" {
 
+JNIEXPORT jboolean JNICALL
+Java_com_nzshores_llmserver_engine_llama_jni_LlamaNative_nativeSupportsGpuOffload(
+    JNIEnv * /*env*/, jobject /*thiz*/) {
+    return llama_supports_gpu_offload() ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT jlong JNICALL
 Java_com_nzshores_llmserver_engine_llama_jni_LlamaNative_nativeLoadModel(
     JNIEnv *env, jobject /*thiz*/, jstring modelPath, jboolean useGpu, jint nGpuLayers) {

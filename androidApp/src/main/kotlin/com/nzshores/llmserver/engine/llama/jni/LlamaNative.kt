@@ -15,6 +15,9 @@ object LlamaNative {
         System.loadLibrary("llama_bridge")
     }
 
+    /** False when no GPU backend (Vulkan/OpenCL/etc.) was compiled into this build. */
+    external fun nativeSupportsGpuOffload(): Boolean
+
     /** Returns 0 on failure; call [nativeGetLastError] to find out why. */
     external fun nativeLoadModel(modelPath: String, useGpu: Boolean, nGpuLayers: Int): Long
 

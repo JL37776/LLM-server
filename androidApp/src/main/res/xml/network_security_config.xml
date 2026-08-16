@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      The LAN API server itself is unaffected by this file - Android's cleartext policy only
+      gates outbound HTTP calls made BY this app, not inbound connections to the Ktor server it
+      hosts. This exists so an in-app HTTP client (tests, or a future in-app "try it" button) can
+      reach the server over plain http://127.0.0.1 without needing HTTPS.
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>
