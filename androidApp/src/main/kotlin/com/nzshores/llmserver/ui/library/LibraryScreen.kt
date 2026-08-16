@@ -101,31 +101,36 @@ fun LibraryScreen(viewModel: LibraryViewModel = koinViewModel()) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Text("My Models", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(vertical = 12.dp))
 
+        SectionLabel("Device preference")
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OutlinedButton(
-                onClick = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        if (Environment.isExternalStorageManager()) {
-                            hasStoragePermission = true
-                            viewModel.onScanDevice()
-                        } else {
-                            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                            intent.data = Uri.parse("package:${context.packageName}")
-                            manageStorageLauncher.launch(intent)
-                        }
+            DeviceOption("GPU first", state.devicePreference == DevicePreference.GPU_FIRST) { viewModel.onSelectDevicePreference(DevicePreference.GPU_FIRST) }
+            DeviceOption("GPU only", state.devicePreference == DevicePreference.GPU_ONLY) { viewModel.onSelectDevicePreference(DevicePreference.GPU_ONLY) }
+            DeviceOption("CPU only", state.devicePreference == DevicePreference.CPU_ONLY) { viewModel.onSelectDevicePreference(DevicePreference.CPU_ONLY) }
+        }
+
+        OutlinedButton(
+            onClick = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    if (Environment.isExternalStorageManager()) {
+                        hasStoragePermission = true
+                        viewModel.onScanDevice()
                     } else {
-                        legacyPermLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+                        val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                        intent.data = Uri.parse("package:${context.packageName}")
+                        manageStorageLauncher.launch(intent)
                     }
-                },
-                border = BorderStroke(1.dp, Accent),
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(Icons.Outlined.Search, contentDescription = null, tint = Accent, modifier = Modifier.padding(end = 6.dp))
-                Text("Scan device", color = Accent)
-            }
+                } else {
+                    legacyPermLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+                }
+            },
+            border = BorderStroke(1.dp, Accent),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+        ) {
+            Icon(Icons.Outlined.Search, contentDescription = null, tint = Accent, modifier = Modifier.padding(end = 6.dp))
+            Text("Scan device for GGUF files", color = Accent)
         }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -134,8 +139,6 @@ fun LibraryScreen(viewModel: LibraryViewModel = koinViewModel()) {
                 item {
                     LoadedCard(
                         model = state.loaded!!,
-                        devicePreference = state.devicePreference,
-                        onSelectPreference = viewModel::onSelectDevicePreference,
                         onUnload = viewModel::onUnload,
                     )
                 }
@@ -148,9 +151,10 @@ fun LibraryScreen(viewModel: LibraryViewModel = koinViewModel()) {
             }
 
             items(state.notLoaded, key = { it.id }) { model ->
+                val showFallbackWarning = state.lastLoadResult?.fellBackToCpu == true && state.lastLoadModelId == model.id
                 IdleCard(
                     model = model,
-                    fellBackToCpu = state.lastLoadResult?.fellBackToCpu == true,
+                    fellBackToCpu = showFallbackWarning,
                     isLoading = state.isLoading,
                     onLoad = { viewModel.onLoad(model) },
                     onDelete = { viewModel.onDelete(model.id) },
@@ -251,8 +255,6 @@ private fun SectionLabel(text: String) {
 @Composable
 private fun LoadedCard(
     model: ModelInfo,
-    devicePreference: DevicePreference,
-    onSelectPreference: (DevicePreference) -> Unit,
     onUnload: () -> Unit,
 ) {
     Card(
@@ -263,22 +265,14 @@ private fun LoadedCard(
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("${model.name} · ${model.selectedQuant?.label ?: ""}", style = MaterialTheme.typography.titleMedium)
+                Text("${model.name} · ${model.selectedQuant?.label ?: ""}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 Badge("Running", Good)
-            }
-
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DeviceOption("GPU first", devicePreference == DevicePreference.GPU_FIRST) { onSelectPreference(DevicePreference.GPU_FIRST) }
-                DeviceOption("GPU only", devicePreference == DevicePreference.GPU_ONLY) { onSelectPreference(DevicePreference.GPU_ONLY) }
-                DeviceOption("CPU only", devicePreference == DevicePreference.CPU_ONLY) { onSelectPreference(DevicePreference.CPU_ONLY) }
             }
 
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End,
             ) {
-                Text("VRAM used -", style = MaterialTheme.typography.bodySmall, color = TextDim)
                 OutlinedButton(onClick = onUnload, border = BorderStroke(1.dp, Bad.copy(alpha = 0.4f))) {
                     Text("Unload", color = Bad)
                 }
@@ -297,7 +291,7 @@ private fun IdleCard(model: ModelInfo, fellBackToCpu: Boolean, isLoading: Boolea
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("${model.name} · ${model.selectedQuant?.label ?: ""}", style = MaterialTheme.typography.titleMedium)
+                Text("${model.name} · ${model.selectedQuant?.label ?: ""}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 Badge("Idle", TextDim, background = Surface2)
             }
 
@@ -319,7 +313,7 @@ private fun IdleCard(model: ModelInfo, fellBackToCpu: Boolean, isLoading: Boolea
             ) {
                 Text(formatSize(model.selectedQuant?.sizeBytes), style = MaterialTheme.typography.bodySmall, color = TextDim)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, contentDescription = "Delete download", tint = Bad) }
+                    IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, contentDescription = "Delete", tint = Bad) }
                     Button(onClick = onLoad, enabled = !isLoading, shape = RoundedCornerShape(10.dp)) { Text("Load") }
                 }
             }

@@ -82,9 +82,15 @@ class AndroidModelRepository(
     override suspend fun deleteLocal(modelId: String) {
         downloadManager.cancel(modelId)
         val entity = modelDao.get(modelId)
-        entity?.localPath?.let { path -> File(path).delete() }
-        val modelDir = File(context.filesDir, "models/$modelId")
-        modelDir.deleteRecursively()
+        val internalModelsDir = File(context.filesDir, "models")
+        entity?.localPath?.let { path ->
+            val file = File(path)
+            if (file.absolutePath.startsWith(internalModelsDir.absolutePath)) {
+                file.delete()
+            }
+        }
+        val modelDir = File(internalModelsDir, modelId)
+        if (modelDir.exists()) modelDir.deleteRecursively()
         modelDao.delete(modelId)
     }
 

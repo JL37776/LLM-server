@@ -86,6 +86,11 @@ class KtorApiServer(
                         return@post
                     }
 
+                    if (engine.status.value.loadedModelId == null) {
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponseDto(ErrorDetailDto("No model is loaded. Load a model first.", "model_not_loaded")))
+                        return@post
+                    }
+
                     if (!requestSemaphore.tryAcquire()) {
                         call.respond(HttpStatusCode.TooManyRequests, ErrorResponseDto(ErrorDetailDto("Server is at max concurrent requests", "rate_limit_error")))
                         return@post

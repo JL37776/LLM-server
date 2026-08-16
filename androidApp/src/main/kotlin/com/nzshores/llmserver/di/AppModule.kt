@@ -55,6 +55,6 @@ val appModule = module {
 
     viewModel { SearchViewModel(get()) }
     viewModel { LibraryViewModel(get(), get(), get()) }
-    viewModel { ServerViewModel(get(), get()) }
+    viewModel { ServerViewModel(get(), get(), get()) }
     viewModel { MonitorViewModel(get(), get()) }
 }

@@ -25,6 +25,7 @@ data class LibraryUiState(
     val engineStatus: EngineStatus? = null,
     val devicePreference: DevicePreference = DevicePreference.GPU_FIRST,
     val lastLoadResult: LoadResult? = null,
+    val lastLoadModelId: String? = null,
     val isLoading: Boolean = false,
     val isScanning: Boolean = false,
     val scanResults: List<LocalGgufFile> = emptyList(),
@@ -58,6 +59,7 @@ class LibraryViewModel(
                     merged.copy(
                         isLoading = current.isLoading,
                         lastLoadResult = current.lastLoadResult,
+                        lastLoadModelId = current.lastLoadModelId,
                         devicePreference = current.devicePreference,
                         isScanning = current.isScanning,
                         scanResults = current.scanResults,
@@ -77,12 +79,15 @@ class LibraryViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             val result = engine.load(model, _uiState.value.devicePreference)
-            _uiState.update { it.copy(isLoading = false, lastLoadResult = result) }
+            _uiState.update { it.copy(isLoading = false, lastLoadResult = result, lastLoadModelId = model.id) }
         }
     }
 
     fun onUnload() {
-        viewModelScope.launch { engine.unload() }
+        viewModelScope.launch {
+            engine.unload()
+            _uiState.update { it.copy(lastLoadResult = null, lastLoadModelId = null) }
+        }
     }
 
     fun onDelete(modelId: String) {

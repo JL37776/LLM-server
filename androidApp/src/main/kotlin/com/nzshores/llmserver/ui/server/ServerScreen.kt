@@ -2,6 +2,7 @@ package com.nzshores.llmserver.ui.server
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,11 +10,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -33,18 +37,35 @@ import com.nzshores.llmserver.ui.theme.Good
 import com.nzshores.llmserver.ui.theme.Surface as SurfaceColor
 import com.nzshores.llmserver.ui.theme.Surface2
 import com.nzshores.llmserver.ui.theme.TextDim
+import com.nzshores.llmserver.ui.theme.Warn
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun ServerScreen(viewModel: ServerViewModel = koinViewModel()) {
     val state by viewModel.runtimeInfo.collectAsState()
-    val endpoint = "http://${state.lanIpAddress ?: "—"}:${state.config.port}/v1"
+    val hasModel by viewModel.hasModelLoaded.collectAsState()
+    val endpoint = "http://${state.lanIpAddress ?: "-"}:${state.config.port}/v1"
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text("Server Console", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(vertical = 12.dp))
 
+        if (!hasModel) {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(bottom = 10.dp)
+                    .background(Warn.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = Warn)
+                Text("No model loaded. Go to Library and load a model first.", style = MaterialTheme.typography.bodySmall, color = Warn)
+            }
+        }
+
         Button(
             onClick = viewModel::onToggleServer,
+            enabled = hasModel || state.isRunning,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = if (state.isRunning) Good else Surface2),
             shape = RoundedCornerShape(14.dp),

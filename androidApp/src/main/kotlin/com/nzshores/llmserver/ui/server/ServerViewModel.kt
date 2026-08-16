@@ -2,24 +2,31 @@ package com.nzshores.llmserver.ui.server
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nzshores.llmserver.core.engine.InferenceEngine
 import com.nzshores.llmserver.core.model.ServerConfig
 import com.nzshores.llmserver.core.model.ServerRuntimeInfo
 import com.nzshores.llmserver.core.server.ApiServer
 import com.nzshores.llmserver.data.settings.SettingsRepository
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class ServerViewModel(
     private val apiServer: ApiServer,
     private val settingsRepository: SettingsRepository,
+    private val engine: InferenceEngine,
 ) : ViewModel() {
 
     val runtimeInfo: StateFlow<ServerRuntimeInfo> = apiServer.runtimeInfo.stateIn(
         viewModelScope,
-        kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000),
+        SharingStarted.WhileSubscribed(5_000),
         apiServer.runtimeInfo.value,
     )
+
+    val hasModelLoaded: StateFlow<Boolean> = engine.status.map { it.loadedModelId != null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), engine.status.value.loadedModelId != null)
 
     init {
         viewModelScope.launch { apiServer.updateConfig(settingsRepository.loadServerConfig()) }
