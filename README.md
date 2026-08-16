@@ -25,12 +25,19 @@ Multiplatform app (`:core` interfaces now, room for a `:desktopApp` later withou
 | 4 - Monitor screen wired to real system + inference metrics | Done, builds |
 | 5 - empty/error states, DataStore settings persistence, unit tests | Done, tests pass |
 
-**Verified on a real machine**: `:core` and `:androidApp` compile, the Room/KSP annotation
-processing runs, `androidApp:testDebugUnitTest` passes, the CMake/NDK native build compiles and
-links `llama.cpp` + the JNI bridge for `arm64-v8a` and `x86_64`, and `assembleDebug` produces a
-real, installable `androidApp-debug.apk`. This has not yet been run on an actual device/emulator
-(no model has been loaded and no request has hit the server), so treat the checklist below as the
-remaining verification.
+**Verified end-to-end on a real physical Android device** (not just a compile check): installed,
+launched with zero crashes, live Hugging Face search renders in the Search tab, and an
+instrumented test (`EndToEndSmokeTest`) drove the actual production code - search → download a
+real GGUF file over the phone's own network → load it into llama.cpp via the JNI bridge → start
+the Ktor server → a real `/v1/chat/completions` call → a real generated response. `:core` and
+`:androidApp` compile, Room/KSP runs, both `testDebugUnitTest` and the connected instrumented test
+pass, and `assembleDebug` produces a real, installable APK.
+
+(Automated UI taps via `adb shell input` don't work on this particular device - its MIUI build
+blocks input injection even with "USB debugging (Security settings)" enabled. The instrumented
+test above exists specifically to verify the real pipeline without needing taps; the checklist
+below still covers the parts only a human tapping through the UI can confirm, like the empty/error
+states and the four tabs' visual layout.)
 
 ## Building it yourself
 
@@ -60,30 +67,36 @@ Vulkan SDK is installed:
 logic in `LlamaCppInferenceEngine` is written and ready either way - it just has nothing to fall
 back *from* until Vulkan is actually compiled in.
 
-## Verifying each phase actually works on-device
+## Verifying it yourself
 
-The build compiles and packages; it has not been installed on a device yet. These are the real
-exit criteria (matches `development-plan.md`):
+`./gradlew connectedDebugAndroidTest` re-runs the same end-to-end smoke test against whatever
+device/emulator `adb devices` sees - search, download, load, start the server, and a real chat
+completion, all in one instrumented test (`androidApp/src/androidTest/.../EndToEndSmokeTest.kt`),
+independent of whether you can tap through the UI on that device.
 
-1. Install and confirm all four tabs (Search, Library, Server, Monitor) navigate.
-2. Search "qwen2.5", download the smallest GGUF result over Wi-Fi, confirm it lands in Library as
-   downloaded/idle.
-3. Load it - confirm it runs (CPU, until Vulkan is built in); then load a model too large for the
-   device's RAM and confirm a real, honest failure rather than a silent hang.
-4. From a laptop on the same Wi-Fi: `curl http://<phone-ip>:8080/v1/chat/completions` and confirm a
-   real streamed response.
-5. Send a few requests from another device and watch the Monitor tab move in real time.
+What's left is what only a human tapping through the UI can confirm (matches
+`development-plan.md`):
+
+1. Confirm all four tabs (Search, Library, Server, Monitor) navigate and look right.
+2. Load a model too large for the device's RAM and confirm a real, honest failure/fallback banner
+   rather than a silent hang.
+3. From a laptop on the same Wi-Fi (not just localhost): `curl http://<phone-ip>:8080/v1/chat/completions`
+   and confirm a real streamed response.
+4. Send a few requests from another device and watch the Monitor tab move in real time.
 
 ## Known gaps / honest limitations
 
-- GPU inference is code-complete but unbuilt: the CPU backend is what's actually been compiled and
-  linked in this session (see the Vulkan note above).
-- No model has actually been loaded and run yet - the JNI bridge links correctly against llama.cpp's
-  API, but token generation hasn't been exercised end to end.
+- GPU inference is code-complete but unbuilt: the CPU backend is what's actually been compiled,
+  linked, and run in this session (see the Vulkan note above). `LlamaCppInferenceEngine` correctly
+  detects this at runtime (`llama_supports_gpu_offload()`) and reports an honest CPU-fallback
+  result rather than falsely claiming GPU - verified via the smoke test.
 - CPU usage on the Monitor screen reads `/proc/stat`; some OEM builds sandbox this for non-system
   apps via SELinux, in which case it reports 0 rather than crashing.
 - VRAM usage is approximated from model file size (llama.cpp doesn't expose a direct VRAM query),
   not measured live.
+- Response quality from the smoke test is rough (a 135M model with prompts joined as plain
+  `role: content` lines rather than the model's real chat template) - fine for proving the pipeline
+  works, not representative of real usage with a 7B+ model and a proper chat template.
 
 ## Bugs found and fixed by actually running the build
 
@@ -100,3 +113,13 @@ Worth knowing about since they'd otherwise look like plausible-but-wrong code on
 - `llama_bridge.cpp` called `llama_sampler_init_penalties` with 4 arguments; the real signature
   takes 5 (`n_vocab, penalty_last_n, penalty_repeat, penalty_freq, penalty_present`) - found by
   diffing against the vendored `llama.h` once the submodule was actually fetched.
+- `LlamaCppInferenceEngine` reported `backend=GPU` whenever a GPU-requested load succeeded, even
+  with `GGML_VULKAN=OFF` - ggml silently ignores `n_gpu_layers` when no GPU backend is registered,
+  so it was quietly running CPU while claiming GPU. Only caught by actually loading a model
+  on-device and noticing the claim didn't match reality. Fixed by checking
+  `llama_supports_gpu_offload()` before attempting a GPU load.
+- Any in-app HTTP client call to the app's own server (this smoke test, or a future in-app "test
+  it" button) hit Android's default cleartext-blocking network security policy, even against
+  `127.0.0.1`. Added a `network_security_config.xml` scoped to localhost only - the LAN server
+  itself was never affected, since that policy only gates outbound calls the app makes, not
+  inbound connections to the Ktor server it hosts.
