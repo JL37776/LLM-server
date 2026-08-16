@@ -5,8 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # GPU backend: Vulkan runs on the widest range of Android GPUs (no vendor-specific
-# OpenCL driver needed). Flip this off (and pass useGpu=false from Kotlin) to force CPU-only.
-option(GGML_VULKAN "llama.cpp: enable Vulkan backend" ON)
+# OpenCL driver needed). Building it requires the LunarG Vulkan SDK on the HOST machine
+# (glslc + SPIRV-Headers, to compile the compute shaders at build time) - set
+# -DGGML_VULKAN=ON (and point CMAKE_PREFIX_PATH / Vulkan_INCLUDE_DIR at the SDK) once
+# that's installed. Left off by default so a plain NDK install can build CPU-only.
+option(GGML_VULKAN "llama.cpp: enable Vulkan backend (needs Vulkan SDK on host)" OFF)
 option(GGML_OPENCL "llama.cpp: enable OpenCL backend" OFF)
 
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/CMakeLists.txt")
