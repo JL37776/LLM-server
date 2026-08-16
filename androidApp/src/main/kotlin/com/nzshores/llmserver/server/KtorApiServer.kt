@@ -13,11 +13,11 @@ import com.nzshores.llmserver.server.dto.ChatCompletionChunkDeltaDto
 import com.nzshores.llmserver.server.dto.ChatCompletionChunkDto
 import com.nzshores.llmserver.server.dto.ChatCompletionRequestDto
 import com.nzshores.llmserver.server.dto.ChatCompletionResponseDto
-import com.nzshores.llmserver.server.dto.ChatMessageDto
 import com.nzshores.llmserver.server.dto.ErrorDetailDto
 import com.nzshores.llmserver.server.dto.ErrorResponseDto
 import com.nzshores.llmserver.server.dto.ModelListEntryDto
 import com.nzshores.llmserver.server.dto.ModelListResponseDto
+import com.nzshores.llmserver.server.dto.ResponseMessageDto
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
@@ -98,7 +98,7 @@ class KtorApiServer(
                     com.nzshores.llmserver.metrics.InferenceMetricsRecorder.setQueueDepth(config.maxConcurrentRequests - requestSemaphore.availablePermits)
                     try {
                         val request = call.receive<ChatCompletionRequestDto>()
-                        val prompt = request.messages.joinToString("\n") { "${it.role}: ${it.content}" }
+                        val prompt = request.messages.joinToString("\n") { "${it.role}: ${it.textContent()}" }
                         val params = GenParams(
                             maxTokens = request.max_tokens ?: 512,
                             temperature = request.temperature ?: 0.7f,
@@ -108,10 +108,19 @@ class KtorApiServer(
                         val id = "chatcmpl-${UUID.randomUUID()}"
                         val created = System.currentTimeMillis() / 1000
 
+                        val imageBase64 = request.messages.lastOrNull { it.imageBase64() != null }?.imageBase64()
+                        val imageBytes = imageBase64?.let { android.util.Base64.decode(it, android.util.Base64.DEFAULT) }
+
+                        val tokenFlow = if (imageBytes != null && engine.hasVision()) {
+                            engine.generateWithImage(prompt, imageBytes, params)
+                        } else {
+                            engine.generate(prompt, params)
+                        }
+
                         if (request.stream) {
                             call.respondTextWriter(ContentType.Text.EventStream) {
                                 var first = true
-                                engine.generate(prompt, params).fold(Unit) { _, token ->
+                                tokenFlow.fold(Unit) { _, token ->
                                     val chunk = ChatCompletionChunkDto(
                                         id = id,
                                         created = created,
@@ -133,14 +142,14 @@ class KtorApiServer(
                             }
                         } else {
                             val builder = StringBuilder()
-                            engine.generate(prompt, params).collect { token -> builder.append(token.text) }
+                            tokenFlow.collect { token -> builder.append(token.text) }
                             call.respond(
                                 ChatCompletionResponseDto(
                                     id = id,
                                     created = created,
                                     model = modelId,
                                     choices = listOf(
-                                        ChatCompletionChoiceDto(index = 0, message = ChatMessageDto("assistant", builder.toString()), finish_reason = "stop"),
+                                        ChatCompletionChoiceDto(index = 0, message = ResponseMessageDto("assistant", builder.toString()), finish_reason = "stop"),
                                     ),
                                 ),
                             )

@@ -17,6 +17,13 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/CMakeLists.txt")
         "llama.cpp submodule is missing. Run: git submodule update --init --recursive")
 endif()
 
+# Enable multimodal (mtmd) library for vision/audio support.
+set(LLAMA_BUILD_MTMD  ON  CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+
+# Disable video support (requires ffmpeg, not available on Android NDK)
+set(MTMD_VIDEO OFF CACHE BOOL "" FORCE)
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp llama_cpp_build)
 
 add_library(llama_bridge SHARED llama_bridge.cpp)
@@ -24,6 +31,7 @@ add_library(llama_bridge SHARED llama_bridge.cpp)
 target_include_directories(llama_bridge PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/include
     ${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/ggml/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/tools/mtmd
 )
 
 find_library(log-lib log)
@@ -32,6 +40,7 @@ find_library(android-lib android)
 target_link_libraries(llama_bridge
     llama
     ggml
+    mtmd
     ${log-lib}
     ${android-lib}
 )

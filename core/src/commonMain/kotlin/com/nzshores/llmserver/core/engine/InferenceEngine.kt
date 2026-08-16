@@ -9,11 +9,6 @@ import com.nzshores.llmserver.core.model.Token
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
-/**
- * Owns exactly one loaded model at a time. [load] must attempt the requested [DevicePreference]
- * first and only silently retry on CPU when the preference is GPU_FIRST - GPU_ONLY failures are
- * reported, never downgraded, so the UI can show the true reason rather than a bare "failed".
- */
 interface InferenceEngine {
 
     val status: StateFlow<EngineStatus>
@@ -22,5 +17,13 @@ interface InferenceEngine {
 
     suspend fun unload()
 
+    suspend fun loadMmproj(mmprojPath: String): Boolean
+
+    suspend fun unloadMmproj()
+
+    fun hasVision(): Boolean
+
     fun generate(prompt: String, params: GenParams = GenParams()): Flow<Token>
+
+    fun generateWithImage(prompt: String, imageData: ByteArray, params: GenParams = GenParams()): Flow<Token>
 }

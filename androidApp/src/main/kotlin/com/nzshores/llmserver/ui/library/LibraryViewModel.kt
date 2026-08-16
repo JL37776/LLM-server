@@ -30,6 +30,9 @@ data class LibraryUiState(
     val isScanning: Boolean = false,
     val scanResults: List<LocalGgufFile> = emptyList(),
     val showScanDialog: Boolean = false,
+    val showMmprojDialog: Boolean = false,
+    val mmprojScanResults: List<LocalGgufFile> = emptyList(),
+    val isScanningMmproj: Boolean = false,
 )
 
 class LibraryViewModel(
@@ -64,6 +67,9 @@ class LibraryViewModel(
                         isScanning = current.isScanning,
                         scanResults = current.scanResults,
                         showScanDialog = current.showScanDialog,
+                        showMmprojDialog = current.showMmprojDialog,
+                        mmprojScanResults = current.mmprojScanResults,
+                        isScanningMmproj = current.isScanningMmproj,
                     )
                 }
             }
@@ -121,5 +127,33 @@ class LibraryViewModel(
 
     fun onImportFromUri(filePath: String) {
         viewModelScope.launch { repository.importLocal(filePath) }
+    }
+
+    fun onScanForMmproj() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isScanningMmproj = true, showMmprojDialog = true) }
+            val results = scanner.scan()
+            val mmproj = results.filter {
+                val lower = it.name.lowercase()
+                lower.contains("mmproj") || lower.contains("clip") || lower.contains("vision")
+            }
+            _uiState.update { it.copy(isScanningMmproj = false, mmprojScanResults = mmproj) }
+        }
+    }
+
+    fun onDismissMmprojDialog() {
+        _uiState.update { it.copy(showMmprojDialog = false, mmprojScanResults = emptyList()) }
+    }
+
+    fun onLoadMmproj(path: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            engine.loadMmproj(path)
+            _uiState.update { it.copy(isLoading = false, showMmprojDialog = false, mmprojScanResults = emptyList()) }
+        }
+    }
+
+    fun onUnloadMmproj() {
+        viewModelScope.launch { engine.unloadMmproj() }
     }
 }

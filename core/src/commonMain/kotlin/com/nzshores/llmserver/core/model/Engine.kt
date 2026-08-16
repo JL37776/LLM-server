@@ -26,6 +26,8 @@ data class EngineStatus(
     val devicePreference: DevicePreference,
     val fellBackToCpu: Boolean,
     val loadedAtEpochMillis: Long?,
+    val hasVision: Boolean = false,
+    val mmprojPath: String? = null,
 )
 
 data class GenParams(

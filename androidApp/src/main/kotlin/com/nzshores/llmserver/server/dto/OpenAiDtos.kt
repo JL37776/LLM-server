@@ -1,9 +1,45 @@
 package com.nzshores.llmserver.server.dto
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-data class ChatMessageDto(val role: String, val content: String)
+data class ChatMessageDto(
+    val role: String,
+    val content: JsonElement,
+) {
+    fun textContent(): String {
+        return when (content) {
+            is JsonPrimitive -> content.jsonPrimitive.content
+            is JsonArray -> content.jsonArray
+                .filter { it.jsonObject["type"]?.jsonPrimitive?.content == "text" }
+                .joinToString("\n") { it.jsonObject["text"]?.jsonPrimitive?.content ?: "" }
+            else -> content.toString()
+        }
+    }
+
+    fun imageBase64(): String? {
+        if (content !is JsonArray) return null
+        for (part in content.jsonArray) {
+            val obj = part.jsonObject
+            if (obj["type"]?.jsonPrimitive?.content != "image_url") continue
+            val url = obj["image_url"]?.jsonObject?.get("url")?.jsonPrimitive?.content ?: continue
+            val prefix = "data:image/"
+            if (url.startsWith(prefix)) {
+                val base64Start = url.indexOf(";base64,")
+                if (base64Start >= 0) return url.substring(base64Start + 8)
+            }
+        }
+        return null
+    }
+}
 
 @Serializable
 data class ChatCompletionRequestDto(
@@ -18,9 +54,12 @@ data class ChatCompletionRequestDto(
 @Serializable
 data class ChatCompletionChoiceDto(
     val index: Int,
-    val message: ChatMessageDto,
+    val message: ResponseMessageDto,
     val finish_reason: String,
 )
+
+@Serializable
+data class ResponseMessageDto(val role: String, val content: String)
 
 @Serializable
 data class ChatCompletionResponseDto(

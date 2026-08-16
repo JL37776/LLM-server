@@ -139,7 +139,11 @@ fun LibraryScreen(viewModel: LibraryViewModel = koinViewModel()) {
                 item {
                     LoadedCard(
                         model = state.loaded!!,
+                        hasVision = state.engineStatus?.hasVision == true,
+                        mmprojPath = state.engineStatus?.mmprojPath,
                         onUnload = viewModel::onUnload,
+                        onScanMmproj = viewModel::onScanForMmproj,
+                        onUnloadMmproj = viewModel::onUnloadMmproj,
                     )
                 }
             }
@@ -151,10 +155,13 @@ fun LibraryScreen(viewModel: LibraryViewModel = koinViewModel()) {
             }
 
             items(state.notLoaded, key = { it.id }) { model ->
-                val showFallbackWarning = state.lastLoadResult?.fellBackToCpu == true && state.lastLoadModelId == model.id
+                val isThisModel = state.lastLoadModelId == model.id
+                val showFallbackWarning = state.lastLoadResult?.fellBackToCpu == true && isThisModel
+                val loadError = if (isThisModel && state.lastLoadResult?.success == false) state.lastLoadResult?.message else null
                 IdleCard(
                     model = model,
                     fellBackToCpu = showFallbackWarning,
+                    loadError = loadError,
                     isLoading = state.isLoading,
                     onLoad = { viewModel.onLoad(model) },
                     onDelete = { viewModel.onDelete(model.id) },
@@ -169,6 +176,15 @@ fun LibraryScreen(viewModel: LibraryViewModel = koinViewModel()) {
             results = state.scanResults,
             onImport = viewModel::onImportFile,
             onDismiss = viewModel::onDismissScanDialog,
+        )
+    }
+
+    if (state.showMmprojDialog) {
+        MmprojDialog(
+            isScanning = state.isScanningMmproj,
+            results = state.mmprojScanResults,
+            onLoad = viewModel::onLoadMmproj,
+            onDismiss = viewModel::onDismissMmprojDialog,
         )
     }
 }
@@ -255,7 +271,11 @@ private fun SectionLabel(text: String) {
 @Composable
 private fun LoadedCard(
     model: ModelInfo,
+    hasVision: Boolean,
+    mmprojPath: String?,
     onUnload: () -> Unit,
+    onScanMmproj: () -> Unit,
+    onUnloadMmproj: () -> Unit,
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = SurfaceColor),
@@ -266,13 +286,39 @@ private fun LoadedCard(
         Column(modifier = Modifier.padding(14.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("${model.name} · ${model.selectedQuant?.label ?: ""}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Badge("Running", Good)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (hasVision) Badge("Vision", Accent)
+                    Badge("Running", Good)
+                }
+            }
+
+            if (mmprojPath != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).background(Accent.copy(alpha = 0.08f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        "Vision: ${mmprojPath.substringAfterLast('/')}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Accent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onUnloadMmproj) {
+                        Text("Remove", color = Bad, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
 
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
+                OutlinedButton(onClick = onScanMmproj, border = BorderStroke(1.dp, Accent.copy(alpha = 0.4f))) {
+                    Text(if (mmprojPath == null) "Add Vision" else "Change Vision", color = Accent, style = MaterialTheme.typography.bodySmall)
+                }
                 OutlinedButton(onClick = onUnload, border = BorderStroke(1.dp, Bad.copy(alpha = 0.4f))) {
                     Text("Unload", color = Bad)
                 }
@@ -282,10 +328,49 @@ private fun LoadedCard(
 }
 
 @Composable
-private fun IdleCard(model: ModelInfo, fellBackToCpu: Boolean, isLoading: Boolean, onLoad: () -> Unit, onDelete: () -> Unit) {
+private fun MmprojDialog(
+    isScanning: Boolean,
+    results: List<LocalGgufFile>,
+    onLoad: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceColor,
+        title = { Text("Vision projector (mmproj)") },
+        text = {
+            if (isScanning) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator(color = Accent, strokeWidth = 2.dp)
+                    Text("Scanning for mmproj files...", color = TextDim)
+                }
+            } else if (results.isEmpty()) {
+                Text("No mmproj/clip/vision GGUF files found on this device. Download one from HuggingFace that matches your text model.", color = TextDim)
+            } else {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 400.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(results, key = { it.path }) { file ->
+                        ScanResultItem(file = file, onImport = { onLoad(file.path) })
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close", color = Accent) }
+        },
+    )
+}
+
+@Composable
+private fun IdleCard(model: ModelInfo, fellBackToCpu: Boolean, loadError: String?, isLoading: Boolean, onLoad: () -> Unit, onDelete: () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = SurfaceColor),
-        border = BorderStroke(1.dp, Border),
+        border = BorderStroke(1.dp, if (loadError != null) Bad else Border),
         shape = RoundedCornerShape(18.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -295,7 +380,16 @@ private fun IdleCard(model: ModelInfo, fellBackToCpu: Boolean, isLoading: Boolea
                 Badge("Idle", TextDim, background = Surface2)
             }
 
-            if (fellBackToCpu) {
+            if (loadError != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp).background(Bad.copy(alpha = 0.08f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = Bad, modifier = Modifier.padding(0.dp))
+                    Text("Load failed: $loadError", style = MaterialTheme.typography.bodySmall, color = Bad, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+            } else if (fellBackToCpu) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp).background(Warn.copy(alpha = 0.08f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
